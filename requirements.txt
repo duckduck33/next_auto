@@ -1,0 +1,23 @@
+# Backend Dependencies
+fastapi==0.109.0
+uvicorn==0.27.0
+python-dotenv==1.0.0
+requests==2.31.0
+aiohttp==3.9.1
+websockets==12.0
+websocket-client==1.7.0
+pydantic==2.5.3
+pydantic-settings==2.1.0
+python-multipart==0.0.6
+starlette==0.35.0
+typing-extensions==4.9.0
+urllib3==2.1.0
+motor==3.3.2
+
+# Frontend Dependencies (for reference)
+# These should be installed via npm/yarn in the frontend directory
+# next==14.0.0
+# react==18.2.0
+# react-dom==18.2.0
+# recharts==2.8.0
+# tailwindcss==3.3.0

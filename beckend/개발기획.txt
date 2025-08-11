@@ -1,0 +1,65 @@
+1. 프로젝트 개요
+프로젝트명: 트레이딩뷰 웹훅 자동매매 백엔드
+목표: 트레이딩뷰에서 보낸 웹훅 신호를 받아, 사용자가 설정한 값에 따라 BingX 거래소에서 자동으로 매매를 실행하는 서버를 개발한다. 사용자의 수익률 및 자산 변화를 계산하여 시각화에 필요한 데이터를 제공한다.
+
+기술 스택:
+
+백엔드: Python (FastAPI 프레임워크 사용)
+
+데이터베이스: MongoDB
+
+거래소 API: BingX API
+
+2. 백엔드 개발 (Fastapi)
+2-1. 필수 패키지 설치 및 환경 변수 설정
+
+패키지 설치: Python 가상 환경을 활성화한 후, 아래 명령어를 실행해 필요한 패키지들을 설치한다.
+
+Bash
+
+pip install fastapi "uvicorn[standard]" python-dotenv pymongo requests
+.env 파일 생성: 프로젝트 루트에 .env 파일을 만들고, BingX API Key, Secret Key, MongoDB 연결 URL 등 민감한 정보를 아래와 같이 저장한다. MONGO_URI는 실제 데이터베이스 주소에 맞게 커서AI가 직접 채워 넣도록 한다.
+
+BINGX_API_KEY=YOUR_BINGX_API_KEY
+BINGX_SECRET_KEY=YOUR_BINGX_SECRET_KEY
+MONGO_URI=YOUR_MONGODB_CONNECTION_STRING
+2-2. 웹훅 서버 구축
+
+FastAPI 앱 설정: main.py 파일에 FastAPI 애플리케이션을 초기화한다.
+
+웹훅 엔드포인트 생성: @app.post("/api/webhook") 데코레이터를 사용하여 웹훅 신호를 수신할 엔드포인트를 만든다. 수신된 데이터는 signals 데이터베이스 컬렉션에 기록한다.
+
+2-3. 데이터베이스 설계 및 연동
+
+MongoDB 연동: pymongo를 사용하여 MongoDB에 연결한다.
+
+데이터베이스 스키마 설계:
+
+User 컬렉션: userId, bingxApiKey, bingxSecretKey, selectedIndicator, investmentAmount, leverage, stopLoss, takeProfit 등을 저장한다.
+
+Signal 컬렉션: userId, timestamp, symbol, signalType, price, rawPayload 등을 저장한다.
+
+Trade 컬렉션: userId, signalId, symbol, status, entryTime, entryPrice, exitTime, exitPrice, profit 등을 저장한다.
+
+2-4. BingX API 연동 및 매매 로직 구현
+
+BingX API 클라이언트 개발: requests를 사용하여 BingX API와 통신하는 전용 모듈을 만든다.
+
+자동매매 로직: POST /api/webhook 엔드포인트로 신호가 들어오면 userId를 기반으로 사용자 설정을 조회하고, BingX API를 호출해 거래를 실행한다.
+
+2-5. 백엔드 API 개발
+
+사용자 API: POST /api/user/settings, GET /api/user/settings 등 사용자 매매 설정을 관리하는 API를 개발한다.
+
+데이터 조회 API:
+
+GET /api/trades: 사용자의 모든 거래 기록을 조회한다.
+
+GET /api/signals: 사용자의 모든 신호 기록을 조회한다.
+
+GET /api/dashboard/data: 수익률 및 자산 변화 데이터를 계산하여 제공한다.
+
+
+
+
+

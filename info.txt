@@ -1,0 +1,2 @@
+ "bingx_demo_url": "https://open-api-vst.bingx.com",
+  "bingx_live_url": "https://open-api.bingx.com",
