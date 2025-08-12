@@ -116,6 +116,9 @@ export default function SettingsForm({ onSettingsChange, onAutoTradingChange }) 
         const data = await response.json();
         console.log('세션 생성 성공:', data);
         
+        // 거래소 타입을 로컬 스토리지에 저장
+        localStorage.setItem('exchangeType', settings.exchangeType);
+        
         if (onSettingsChange) {
           onSettingsChange(data.session_id);
         }

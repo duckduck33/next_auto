@@ -8,80 +8,60 @@ import os
 import json
 from hashlib import sha256
 from dotenv import load_dotenv
+from app.models.user_session import session_manager
+from app.services.sqlite_session_service import sqlite_session_service
 
 # .env 파일 로드
 load_dotenv()
-
-APIURL = "https://open-api-vst.bingx.com"
-# API 키는 동적으로 설정됨
-APIKEY = ""
-SECRETKEY = ""
 
 router = APIRouter()
 
 # 하드코딩된 심볼을 상수로 통합관리
 HARDCODED_SYMBOL = "XRP-USDT"
 
-# 전역 API 키 변수
-global_api_key = ""
-global_secret_key = ""
+def get_api_url(exchange_type: str) -> str:
+    """거래소 타입에 따라 API URL 반환"""
+    if exchange_type == "live":
+        return "https://open-api.bingx.com"
+    else:
+        return "https://open-api-vst.bingx.com"
 
-def set_credentials(api_key: str, secret_key: str):
-    """API 키 설정"""
-    global global_api_key, global_secret_key
-    global_api_key = api_key
-    global_secret_key = secret_key
-
-class ProfitResponse(BaseModel):
-    symbol: str
-    position_side: str
-    position_amt: float
-    entry_price: float
-    current_price: float
-    base_profit_rate: float
-    actual_profit_rate: float
-    unrealized_profit: float
-    leverage: int
-
-def get_positions(symbol: str):
+def get_positions(symbol: str, api_key: str, secret_key: str, exchange_type: str):
     """현재 포지션 조회"""
+    api_url = get_api_url(exchange_type)
     path = '/openApi/swap/v2/user/positions'
     method = "GET"
     paramsMap = {"symbol": symbol}
     paramsStr = parseParam(paramsMap)
-    result = send_request(method, path, paramsStr, {}, global_api_key, global_secret_key)
+    result = send_request(method, path, paramsStr, {}, api_key, secret_key, api_url)
     return json.loads(result)
 
-def get_current_price(symbol: str):
+def get_current_price(symbol: str, api_key: str, secret_key: str, exchange_type: str):
     """현재가 조회"""
+    api_url = get_api_url(exchange_type)
     path = '/openApi/swap/v2/quote/price'
     method = "GET"
     paramsMap = {"symbol": symbol}
     paramsStr = parseParam(paramsMap)
-    result = send_request(method, path, paramsStr, {}, global_api_key, global_secret_key)
+    result = send_request(method, path, paramsStr, {}, api_key, secret_key, api_url)
     return json.loads(result)
 
-def get_account_info():
+def get_account_info(api_key: str, secret_key: str, exchange_type: str):
     """계정 정보 조회"""
+    api_url = get_api_url(exchange_type)
     path = '/openApi/swap/v2/user/account'
     method = "GET"
     paramsMap = {}
     paramsStr = parseParam(paramsMap)
-    result = send_request(method, path, paramsStr, {}, global_api_key, global_secret_key)
+    result = send_request(method, path, paramsStr, {}, api_key, secret_key, api_url)
     return json.loads(result)
 
 def get_sign(api_secret: str, payload: str) -> str:
     signature = hmac.new(api_secret.encode("utf-8"), payload.encode("utf-8"), digestmod=sha256).hexdigest()
     return signature
 
-def send_request(method: str, path: str, urlpa: str, payload: dict, api_key: str = "", secret_key: str = "") -> str:
-    # API 키가 설정되지 않은 경우 기본값 사용
-    if not api_key:
-        api_key = APIKEY
-    if not secret_key:
-        secret_key = SECRETKEY
-    
-    url = "%s%s?%s&signature=%s" % (APIURL, path, urlpa, get_sign(secret_key, urlpa))
+def send_request(method: str, path: str, urlpa: str, payload: dict, api_key: str, secret_key: str, api_url: str) -> str:
+    url = "%s%s?%s&signature=%s" % (api_url, path, urlpa, get_sign(secret_key, urlpa))
     headers = {
         'X-BX-APIKEY': api_key,
     }
@@ -97,31 +77,45 @@ def parseParam(paramsMap: dict) -> str:
         return paramsStr+"timestamp="+str(int(time.time() * 1000))
 
 @router.get("/profit/{symbol}")
-async def get_profit_info(symbol: str) -> dict:
+async def get_profit_info(symbol: str, session_id: str = None) -> dict:
     """수익률 및 자산 정보 조회"""
-    global global_api_key, global_secret_key
-    
-    # API 키가 설정되지 않은 경우
-    if not global_api_key or not global_secret_key:
-        raise HTTPException(status_code=404, detail="API 키가 설정되지 않았습니다.")
-    
     try:
-        # 하드코딩된 심볼 사용
-        symbol = HARDCODED_SYMBOL
-        print(f"수익률 API 호출: 하드코딩 symbol={symbol}, API_KEY={global_api_key[:10]}...")
+        # 세션 ID가 없으면 기본값 사용
+        if not session_id:
+            raise HTTPException(status_code=400, detail="세션 ID가 필요합니다.")
         
-        # 1. 계정 정보 조회 (초기자산, 현재자산)
-        account_result = get_account_info()
-        initial_balance = 1000  # 기본값
-        current_balance = 1000  # 기본값
+        # 세션 정보 조회
+        session_data = sqlite_session_service.get_session(session_id)
+        if not session_data:
+            raise HTTPException(status_code=404, detail="세션을 찾을 수 없습니다.")
+        
+        api_key = session_data.get('api_key')
+        secret_key = session_data.get('secret_key')
+        exchange_type = session_data.get('exchange_type', 'demo')
+        
+        if not api_key or not secret_key:
+            raise HTTPException(status_code=400, detail="API 키가 설정되지 않았습니다.")
+        
+        print(f"수익률 API 호출: symbol={symbol}, exchange_type={exchange_type}, session_id={session_id}")
+        
+        # 1. 계정 정보 조회 (현재자산)
+        account_result = get_account_info(api_key, secret_key, exchange_type)
+        current_balance = 0  # 기본값
         
         if account_result.get('code') == 0:
             account_data = account_result.get('data', {})
-            current_balance = float(account_data.get('totalWalletBalance', 1000))
-            initial_balance = float(account_data.get('totalInitialMargin', 1000))
+            current_balance = float(account_data.get('totalWalletBalance', 0))
         
-        # 2. 현재 포지션 조회
-        positions_result = get_positions(symbol)
+        # 2. 초기자산 조회 (세션 시작시점의 잔고)
+        initial_balance = session_data.get('initial_balance')
+        if initial_balance is None:
+            # 초기자산이 저장되지 않은 경우 현재 잔고를 초기자산으로 설정
+            initial_balance = current_balance
+            # SQLite에 초기자산 저장
+            sqlite_session_service.update_initial_balance(session_id, initial_balance)
+        
+        # 3. 현재 포지션 조회
+        positions_result = get_positions(symbol, api_key, secret_key, exchange_type)
         print(f"포지션 조회 결과: {positions_result}")
         
         has_position = False
@@ -140,14 +134,14 @@ async def get_profit_info(symbol: str) -> dict:
                 position_size = float(position.get('positionAmt', 0))
                 entry_price = float(position.get('avgPrice', 0))
         
-        # 3. 현재가 조회
-        price_result = get_current_price(symbol)
+        # 4. 현재가 조회
+        price_result = get_current_price(symbol, api_key, secret_key, exchange_type)
         current_price = 0
         
         if price_result.get('code') == 0:
             current_price = float(price_result.get('data', {}).get('price', 0))
         
-        # 4. 수익률 계산
+        # 5. 수익률 계산
         profit_rate = 0
         if initial_balance > 0:
             profit_rate = ((current_balance - initial_balance) / initial_balance) * 100

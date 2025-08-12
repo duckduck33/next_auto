@@ -125,6 +125,25 @@ class SQLiteSessionService:
             logger.error(f"세션 상태 업데이트 오류: {str(e)}")
             return False
     
+    def update_initial_balance(self, session_id: str, initial_balance: float) -> bool:
+        """초기자산 업데이트"""
+        try:
+            with self.db.get_connection() as conn:
+                cursor = conn.cursor()
+                cursor.execute('''
+                    UPDATE user_sessions SET
+                        initial_balance = ?, last_activity = ?
+                    WHERE session_id = ?
+                ''', (initial_balance, datetime.now(), session_id))
+                
+                conn.commit()
+                logger.info(f"초기자산 업데이트: {session_id} = {initial_balance}")
+                return True
+                
+        except Exception as e:
+            logger.error(f"초기자산 업데이트 오류: {str(e)}")
+            return False
+    
     def delete_session(self, session_id: str) -> bool:
         """세션 삭제"""
         try:

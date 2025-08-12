@@ -39,10 +39,19 @@ class SQLiteDatabase:
                         indicator TEXT DEFAULT 'PREMIUM',
                         is_auto_trading_enabled BOOLEAN DEFAULT FALSE,
                         current_symbol TEXT,
+                        initial_balance REAL,
                         created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
                         last_activity TIMESTAMP DEFAULT CURRENT_TIMESTAMP
                     )
                 ''')
+                
+                # initial_balance 컬럼이 없는 경우 추가
+                try:
+                    cursor.execute('ALTER TABLE user_sessions ADD COLUMN initial_balance REAL')
+                    logger.info("initial_balance 컬럼 추가됨")
+                except sqlite3.OperationalError:
+                    # 컬럼이 이미 존재하는 경우 무시
+                    pass
                 
                 # 사용자 계정 테이블 생성
                 cursor.execute('''

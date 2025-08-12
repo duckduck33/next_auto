@@ -6,7 +6,7 @@ from fastapi import APIRouter, Request, HTTPException
 from fastapi.responses import JSONResponse
 from app.services.bingx import BingXClient
 from app.services.trading import TradingService
-from app.api.profit import set_credentials
+
 from app.services.sqlite_session_service import sqlite_session_service
 
 # 하드코딩된 심볼을 상수로 통합관리
@@ -136,11 +136,7 @@ async def handle_webhook(request: Request) -> dict[str, Any]:
             exchange_type=user_settings.get('exchangeType', 'demo')
         )
         
-        # 수익률 API에도 API 키 설정
-        set_credentials(
-            api_key=user_settings['apiKey'],
-            secret_key=user_settings['secretKey']
-        )
+
         
         if action == 'CLOSE':
             logger.info("🔴 포지션 종료 시도")
@@ -293,15 +289,10 @@ async def check_position() -> dict[str, Any]:
             secret_key=user_settings['secretKey']
         )
         
-        # 수익률 API에도 API 키 설정
-        set_credentials(
-            api_key=user_settings['apiKey'],
-            secret_key=user_settings['secretKey']
-        )
+
         
-        # 포지션 조회 (하드코딩된 심볼 사용)
-        from app.api.profit import get_positions
-        positions_result = get_positions(symbol)
+        # 포지션 조회 (BingX 클라이언트 사용)
+        positions_result = await bingx_client.get_positions(symbol)
         
         if positions_result.get('code') != 0:
             return {
@@ -368,12 +359,7 @@ async def update_user_settings(request: Request) -> dict[str, Any]:
             'isAutoTradingEnabled': data.get('isAutoTradingEnabled', False)
         }
         
-        # 수익률 API에도 API 키 설정
-        if session_settings[session_id].get('apiKey') and session_settings[session_id].get('secretKey'):
-            set_credentials(
-                api_key=session_settings[session_id]['apiKey'],
-                secret_key=session_settings[session_id]['secretKey']
-            )
+
         
         logger.info(f"세션 {session_id} 설정 업데이트: {session_settings[session_id]}")
         
@@ -428,11 +414,7 @@ async def close_position(request: Request) -> dict[str, Any]:
             secret_key=user_settings['secretKey']
         )
         
-        # 수익률 API에도 API 키 설정
-        set_credentials(
-            api_key=user_settings['apiKey'],
-            secret_key=user_settings['secretKey']
-        )
+
         
         logger.info(f"포지션 종료 요청: {symbol}")
         
