@@ -61,6 +61,15 @@ def get_current_price(symbol: str):
     result = send_request(method, path, paramsStr, {}, global_api_key, global_secret_key)
     return json.loads(result)
 
+def get_account_info():
+    """계정 정보 조회"""
+    path = '/openApi/swap/v2/user/account'
+    method = "GET"
+    paramsMap = {}
+    paramsStr = parseParam(paramsMap)
+    result = send_request(method, path, paramsStr, {}, global_api_key, global_secret_key)
+    return json.loads(result)
+
 def get_sign(api_secret: str, payload: str) -> str:
     signature = hmac.new(api_secret.encode("utf-8"), payload.encode("utf-8"), digestmod=sha256).hexdigest()
     return signature
@@ -88,8 +97,8 @@ def parseParam(paramsMap: dict) -> str:
         return paramsStr+"timestamp="+str(int(time.time() * 1000))
 
 @router.get("/profit/{symbol}")
-async def get_profit_info(symbol: str) -> List[ProfitResponse]:
-    """수익률 정보 조회"""
+async def get_profit_info(symbol: str) -> dict:
+    """수익률 및 자산 정보 조회"""
     global global_api_key, global_secret_key
     
     # API 키가 설정되지 않은 경우
@@ -101,65 +110,59 @@ async def get_profit_info(symbol: str) -> List[ProfitResponse]:
         symbol = HARDCODED_SYMBOL
         print(f"수익률 API 호출: 하드코딩 symbol={symbol}, API_KEY={global_api_key[:10]}...")
         
-        # 1. 현재 포지션 조회 (하드코딩된 심볼 사용)
+        # 1. 계정 정보 조회 (초기자산, 현재자산)
+        account_result = get_account_info()
+        initial_balance = 1000  # 기본값
+        current_balance = 1000  # 기본값
+        
+        if account_result.get('code') == 0:
+            account_data = account_result.get('data', {})
+            current_balance = float(account_data.get('totalWalletBalance', 1000))
+            initial_balance = float(account_data.get('totalInitialMargin', 1000))
+        
+        # 2. 현재 포지션 조회
         positions_result = get_positions(symbol)
         print(f"포지션 조회 결과: {positions_result}")
         
-        if positions_result.get('code') != 0:
-            print(f"포지션 조회 실패: {positions_result}")
-            return []
+        has_position = False
+        position_side = ''
+        position_size = 0
+        entry_price = 0
         
-        positions = positions_result.get('data', [])
-        active_positions = [p for p in positions if float(p.get('positionAmt', 0)) != 0]
+        if positions_result.get('code') == 0:
+            positions = positions_result.get('data', [])
+            active_positions = [p for p in positions if float(p.get('positionAmt', 0)) != 0]
+            
+            if active_positions:
+                has_position = True
+                position = active_positions[0]  # 첫 번째 활성 포지션
+                position_side = position.get('positionSide', 'LONG')
+                position_size = float(position.get('positionAmt', 0))
+                entry_price = float(position.get('avgPrice', 0))
         
-        if not active_positions:
-            print("활성 포지션이 없습니다.")
-            return []
-        
-        # 2. 현재가 조회
+        # 3. 현재가 조회
         price_result = get_current_price(symbol)
-        print(f"현재가 조회 결과: {price_result}")
+        current_price = 0
         
-        if price_result.get('code') != 0:
-            print(f"현재가 조회 실패: {price_result}")
-            return []
+        if price_result.get('code') == 0:
+            current_price = float(price_result.get('data', {}).get('price', 0))
         
-        current_price = float(price_result.get('data', {}).get('price', 0))
+        # 4. 수익률 계산
+        profit_rate = 0
+        if initial_balance > 0:
+            profit_rate = ((current_balance - initial_balance) / initial_balance) * 100
         
-        profit_info = []
-        
-        for position in active_positions:
-            position_side = position.get('positionSide', 'LONG')
-            position_amt = float(position.get('positionAmt', 0))
-            entry_price = float(position.get('avgPrice', 0))  # avgPrice 사용
-            unrealized_profit = float(position.get('unrealizedProfit', 0))
-            leverage = int(position.get('leverage', 1))
-            
-            # 수익률 계산
-            if entry_price > 0:
-                if position_side == 'LONG':
-                    base_profit_rate = ((current_price - entry_price) / entry_price) * 100
-                else:  # SHORT
-                    base_profit_rate = ((entry_price - current_price) / entry_price) * 100
-            else:
-                base_profit_rate = 0
-            
-            # 레버리지 적용된 실제 수익률
-            actual_profit_rate = base_profit_rate * leverage
-            
-            profit_info.append(ProfitResponse(
-                symbol=symbol,  # 하드코딩된 심볼 사용
-                position_side=position_side,
-                position_amt=position_amt,
-                entry_price=entry_price,
-                current_price=current_price,
-                base_profit_rate=base_profit_rate,
-                actual_profit_rate=actual_profit_rate,
-                unrealized_profit=unrealized_profit,
-                leverage=leverage
-            ))
-        
-        return profit_info
+        # 통합 응답
+        return {
+            "initialBalance": initial_balance,
+            "currentBalance": current_balance,
+            "hasPosition": has_position,
+            "positionSide": position_side,
+            "positionSize": position_size,
+            "entryPrice": entry_price,
+            "currentPrice": current_price,
+            "profitRate": profit_rate
+        }
         
     except Exception as e:
         print(f"수익률 조회 중 오류: {str(e)}")
