@@ -33,7 +33,7 @@ class SessionManager:
                       investment: float, leverage: int, take_profit: float, 
                       stop_loss: float, indicator: str) -> str:
         """새로운 사용자 세션을 생성합니다."""
-        session_id = str(uuid.uuid4())
+        session_id = f"{api_key}_{exchange_type}"  # API 키 + 거래소 타입으로 세션 ID 생성
         now = datetime.now()
         
         session = UserSession(

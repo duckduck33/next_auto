@@ -7,6 +7,7 @@ from fastapi.responses import JSONResponse
 from app.services.bingx import BingXClient
 from app.services.trading import TradingService
 from app.api.profit import set_credentials
+from app.services.sqlite_session_service import sqlite_session_service
 
 # 하드코딩된 심볼을 상수로 통합관리
 HARDCODED_SYMBOL = "XRP-USDT"
@@ -24,6 +25,9 @@ trading_service = TradingService()
 # 세션별 설정을 저장할 딕셔너리
 session_settings = {}
 session_trading_symbols = {}
+
+# 전역 사용자 설정 (기본값)
+user_settings = {}
 
 async def calculate_order_quantity(investment_amount: float, leverage: int, current_price: float) -> float:
     """투자금액과 레버리지를 기반으로 주문 수량 계산"""
@@ -52,9 +56,28 @@ async def handle_webhook(request: Request) -> dict[str, Any]:
                 "data": None
             }
         
-        # 세션별 설정 가져오기
-        user_settings = session_settings.get(session_id, {})
-        current_trading_symbol = session_trading_symbols.get(session_id)
+        # SQLite에서 세션 설정 가져오기
+        db_session = sqlite_session_service.get_session(session_id)
+        if not db_session:
+            logger.error(f"❌ 세션 {session_id}를 찾을 수 없습니다.")
+            return {
+                "success": False,
+                "message": "세션을 찾을 수 없습니다.",
+                "data": None
+            }
+        
+        user_settings = {
+            'apiKey': db_session['api_key'],
+            'secretKey': db_session['secret_key'],
+            'exchangeType': db_session['exchange_type'],
+            'investment': db_session['investment'],
+            'leverage': db_session['leverage'],
+            'takeProfit': db_session['take_profit'],
+            'stopLoss': db_session['stop_loss'],
+            'indicator': db_session['indicator'],
+            'isAutoTradingEnabled': db_session['is_auto_trading_enabled']
+        }
+        current_trading_symbol = db_session.get('current_symbol')
         
         # 자동매매가 비활성화된 경우 웹훅 무시
         if not user_settings.get('isAutoTradingEnabled', False):
@@ -89,7 +112,8 @@ async def handle_webhook(request: Request) -> dict[str, Any]:
             # XRPUSDT.P -> XRP-USDT 변환
             symbol = symbol.replace('.P', '').replace('USDT', '-USDT')
         
-        session_trading_symbols[session_id] = symbol
+        # SQLite에 현재 거래 심볼 업데이트
+        sqlite_session_service.update_session_status(session_id, True, symbol)
         logger.info(f"🎯 세션 {session_id} 거래 심볼: {symbol}, 전략: {strategy}, 액션: {action}")
         
         # 사용자가 선택한 지표와 웹훅 전략이 일치하는지 확인
@@ -205,9 +229,9 @@ async def handle_webhook(request: Request) -> dict[str, Any]:
             )
             logger.info(f"✅ 새 포지션 진입 결과: {result}")
         
-        # 포지션 진입 성공 시 세션별 거래 심볼 업데이트
+        # 포지션 진입 성공 시 SQLite에 거래 심볼 업데이트
         if result.get('success', False):
-            session_trading_symbols[session_id] = symbol
+            sqlite_session_service.update_session_status(session_id, True, symbol)
             logger.info(f"🎯 세션 {session_id} 현재 거래 심볼 업데이트: {symbol}")
         
         logger.info("=== 웹훅 신호 처리 완료 ===")
@@ -239,11 +263,12 @@ async def handle_webhook(request: Request) -> dict[str, Any]:
             detail=f"웹훅 처리 중 오류 발생: {str(e)}"
         )
 
-@router.get("/current-symbol")
-async def get_current_symbol() -> dict[str, str]:
-    """현재 거래 중인 티커 정보 반환"""
-    global current_trading_symbol
-    return {"symbol": current_trading_symbol or "XRP-USDT"}
+@router.get("/current-symbol/{session_id}")
+async def get_current_symbol(session_id: str) -> dict[str, str]:
+    """세션별 현재 거래 중인 티커 정보 반환"""
+    db_session = sqlite_session_service.get_session(session_id)
+    symbol = db_session.get('current_symbol', "XRP-USDT") if db_session else "XRP-USDT"
+    return {"symbol": symbol}
 
 @router.get("/check-position")
 async def check_position() -> dict[str, Any]:
@@ -369,26 +394,33 @@ async def update_user_settings(request: Request) -> dict[str, Any]:
 @router.get("/settings")
 async def get_user_settings() -> dict[str, Any]:
     """현재 사용자 설정 조회"""
-    global user_settings
+    global session_settings
     return {
         "success": True,
-        "data": user_settings
+        "data": session_settings
     }
 
 @router.post("/close-position")
 async def close_position(request: Request) -> dict[str, Any]:
     """현재 활성 포지션 종료"""
-    global current_trading_symbol, user_settings
+    global current_trading_symbol, session_settings
     
     try:
+        # 요청 본문에서 세션 ID와 심볼 정보 가져오기
+        body = await request.body()
+        data = json.loads(body.decode('utf-8')) if body else {}
+        session_id = data.get('session_id')
+        symbol = data.get('symbol', 'XRP-USDT')
+        
+        if not session_id:
+            raise HTTPException(status_code=400, detail="세션 ID가 필요합니다.")
+        
+        # 세션별 설정 가져오기
+        user_settings = session_settings.get(session_id, {})
+        
         # API 키가 설정되지 않은 경우 오류 반환
         if not user_settings.get('apiKey') or not user_settings.get('secretKey'):
             raise HTTPException(status_code=400, detail="API 키가 설정되지 않았습니다.")
-        
-        # 요청 본문에서 심볼 정보 가져오기
-        body = await request.body()
-        data = json.loads(body.decode('utf-8')) if body else {}
-        symbol = data.get('symbol', 'XRP-USDT')
         
         # BingX 클라이언트에 API 키 설정
         bingx_client.set_credentials(

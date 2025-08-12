@@ -87,9 +87,11 @@ class BingXClient:
         params = {}
         return await self._request('GET', '/openApi/swap/v2/user/balance', params)
 
-    async def get_positions(self, symbol: str) -> Dict:
-        """특정 심볼의 포지션을 조회합니다."""
-        params = {'symbol': symbol}
+    async def get_positions(self, symbol: str = None) -> Dict:
+        """포지션을 조회합니다. symbol이 None이면 모든 포지션을 조회합니다."""
+        params = {}
+        if symbol:
+            params['symbol'] = symbol
         return await self._request('GET', '/openApi/swap/v2/user/positions', params)
 
     async def get_ticker(self, symbol: str) -> Dict:
