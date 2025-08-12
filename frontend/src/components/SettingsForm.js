@@ -103,7 +103,7 @@ export default function SettingsForm({ onSettingsChange, onAutoTradingChange }) 
       
       console.log('세션 생성 요청:', requestBody);
       
-      const response = await fetch(`${BACKEND_URL}/api/create-or-update-session`, {
+      const response = await fetch(`/api/create-or-update-session`, {
         method: 'POST',
         headers: { 
           'Content-Type': 'application/json',
@@ -139,7 +139,7 @@ export default function SettingsForm({ onSettingsChange, onAutoTradingChange }) 
     
     // 백엔드에 자동매매 상태 업데이트
     try {
-      const response = await fetch(`${BACKEND_URL}/api/create-or-update-session`, {
+      const response = await fetch(`/api/create-or-update-session`, {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
         body: JSON.stringify({
@@ -190,7 +190,7 @@ export default function SettingsForm({ onSettingsChange, onAutoTradingChange }) 
     try {
       const sessionId = `${localStorage.getItem('userEmail')}_${settings.exchangeType}`;
       
-      const response = await fetch(`${BACKEND_URL}/api/test-long-position`, {
+      const response = await fetch(`/api/test-long-position`, {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
         body: JSON.stringify({ session_id: sessionId })
@@ -224,7 +224,7 @@ export default function SettingsForm({ onSettingsChange, onAutoTradingChange }) 
     try {
       const sessionId = `${localStorage.getItem('userEmail')}_${settings.exchangeType}`;
       
-      const response = await fetch(`${BACKEND_URL}/api/emergency-close-all`, {
+      const response = await fetch(`/api/emergency-close-all`, {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
         body: JSON.stringify({ session_id: sessionId })
