@@ -124,3 +124,48 @@ async def get_balance_info(session_id: str) -> dict:
     except Exception as e:
         print(f"자산 조회 중 오류: {str(e)}")
         raise HTTPException(status_code=500, detail=f"자산 조회 중 오류: {str(e)}")
+
+@router.get("/account-balance/{session_id}")
+async def get_account_balance(session_id: str) -> dict:
+    """계좌 전체 잔고 조회"""
+    try:
+        # 세션 정보 조회
+        session_data = sqlite_session_service.get_session(session_id)
+        if not session_data:
+            raise HTTPException(status_code=404, detail="세션을 찾을 수 없습니다.")
+        
+        api_key = session_data.get('api_key')
+        secret_key = session_data.get('secret_key')
+        exchange_type = session_data.get('exchange_type', 'demo')
+        
+        if not api_key or not secret_key:
+            raise HTTPException(status_code=400, detail="API 키가 설정되지 않았습니다.")
+        
+        print(f"계좌 잔고 조회: exchange_type={exchange_type}, session_id={session_id}")
+        
+        # 계정 정보 조회
+        account_result = get_account_info(api_key, secret_key, exchange_type)
+        
+        if account_result.get('code') == 0:
+            account_data = account_result.get('data', {})
+            total_balance = float(account_data.get('totalWalletBalance', 0))
+            available_balance = float(account_data.get('availableBalance', 0))
+            frozen_balance = float(account_data.get('frozenBalance', 0))
+            
+            return {
+                "success": True,
+                "session_id": session_id,
+                "exchange_type": exchange_type,
+                "balance": {
+                    "total_balance": total_balance,
+                    "available_balance": available_balance,
+                    "frozen_balance": frozen_balance,
+                    "currency": "VST" if exchange_type == "demo" else "USDT"
+                }
+            }
+        else:
+            raise HTTPException(status_code=500, detail=f"계좌 조회 실패: {account_result.get('msg', '알 수 없는 오류')}")
+        
+    except Exception as e:
+        print(f"계좌 잔고 조회 중 오류: {str(e)}")
+        raise HTTPException(status_code=500, detail=f"계좌 잔고 조회 중 오류: {str(e)}")

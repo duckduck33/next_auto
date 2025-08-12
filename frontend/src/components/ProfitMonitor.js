@@ -10,8 +10,7 @@ export default function ProfitMonitor({ sessionId, isAutoTradingEnabled }) {
     hasPosition: false,
     positionSide: '',
     positionSize: 0,
-    entryPrice: 0,
-    profitRate: 0
+    entryPrice: 0
   });
 
   useEffect(() => {
@@ -30,15 +29,24 @@ export default function ProfitMonitor({ sessionId, isAutoTradingEnabled }) {
       const exchangeType = localStorage.getItem('exchangeType') || 'demo';
       const sessionId = `${userEmail}_${exchangeType}`;
       
-      const response = await fetch(`/api/balance/${sessionId}`, {
+      const response = await fetch(`/api/account-balance/${sessionId}`, {
         credentials: 'include'
       });
       if (response.ok) {
         const data = await response.json();
-        setTradingInfo(data);
+        if (data.success) {
+          setTradingInfo({
+            initialBalance: data.balance.total_balance,
+            currentBalance: data.balance.total_balance,
+            hasPosition: false,
+            positionSide: '',
+            positionSize: 0,
+            entryPrice: 0
+          });
+        }
       }
     } catch (error) {
-      console.error('자산 정보 조회 실패:', error);
+      console.error('계좌 잔고 조회 실패:', error);
     }
   };
 
@@ -61,9 +69,6 @@ export default function ProfitMonitor({ sessionId, isAutoTradingEnabled }) {
               <div className="text-xs text-gray-500 space-y-1">
                 <p>초기자산: {tradingInfo.initialBalance?.toLocaleString()} {assetUnit}</p>
                 <p>현재자산: {tradingInfo.currentBalance?.toLocaleString()} {assetUnit}</p>
-                <p className={`font-semibold ${tradingInfo.profitRate >= 0 ? 'text-green-400' : 'text-red-400'}`}>
-                  수익률: {tradingInfo.profitRate?.toFixed(2)}%
-                </p>
               </div>
             </div>
 
