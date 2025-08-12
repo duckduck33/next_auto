@@ -129,22 +129,33 @@ async def get_balance_info(session_id: str) -> dict:
 async def get_account_balance(session_id: str) -> dict:
     """계좌 전체 잔고 조회"""
     try:
+        print(f"=== 계좌 잔고 조회 시작 ===")
+        print(f"📥 요청 세션 ID: {session_id}")
+        
         # 세션 정보 조회
         session_data = sqlite_session_service.get_session(session_id)
         if not session_data:
+            print(f"❌ 세션을 찾을 수 없음: {session_id}")
             raise HTTPException(status_code=404, detail="세션을 찾을 수 없습니다.")
+        
+        print(f"✅ 세션 정보 조회 성공: {session_id}")
+        print(f"📊 세션 데이터: {session_data}")
         
         api_key = session_data.get('api_key')
         secret_key = session_data.get('secret_key')
         exchange_type = session_data.get('exchange_type', 'demo')
         
         if not api_key or not secret_key:
+            print(f"❌ API 키가 설정되지 않음: {session_id}")
             raise HTTPException(status_code=400, detail="API 키가 설정되지 않았습니다.")
         
-        print(f"계좌 잔고 조회: exchange_type={exchange_type}, session_id={session_id}")
+        print(f"🔑 API 키 확인 완료: {session_id}")
+        print(f"🏦 거래소 타입: {exchange_type}")
         
         # 계정 정보 조회
+        print(f"📡 BingX API 호출 시작...")
         account_result = get_account_info(api_key, secret_key, exchange_type)
+        print(f"📡 BingX API 응답: {account_result}")
         
         if account_result.get('code') == 0:
             account_data = account_result.get('data', {})
@@ -152,7 +163,13 @@ async def get_account_balance(session_id: str) -> dict:
             available_balance = float(account_data.get('availableBalance', 0))
             frozen_balance = float(account_data.get('frozenBalance', 0))
             
-            return {
+            print(f"💰 계좌 잔고 정보:")
+            print(f"   - 총 잔고: {total_balance}")
+            print(f"   - 사용 가능 잔고: {available_balance}")
+            print(f"   - 동결 잔고: {frozen_balance}")
+            print(f"   - 통화: {'VST' if exchange_type == 'demo' else 'USDT'}")
+            
+            result = {
                 "success": True,
                 "session_id": session_id,
                 "exchange_type": exchange_type,
@@ -163,9 +180,13 @@ async def get_account_balance(session_id: str) -> dict:
                     "currency": "VST" if exchange_type == "demo" else "USDT"
                 }
             }
+            
+            print(f"✅ 계좌 잔고 조회 완료: {result}")
+            return result
         else:
+            print(f"❌ 계좌 조회 실패: {account_result}")
             raise HTTPException(status_code=500, detail=f"계좌 조회 실패: {account_result.get('msg', '알 수 없는 오류')}")
         
     except Exception as e:
-        print(f"계좌 잔고 조회 중 오류: {str(e)}")
+        print(f"❌ 계좌 잔고 조회 중 오류: {str(e)}")
         raise HTTPException(status_code=500, detail=f"계좌 잔고 조회 중 오류: {str(e)}")
