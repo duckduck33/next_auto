@@ -79,17 +79,18 @@ export default function ProfitMonitor({ sessionId, isAutoTradingEnabled }) {
     }
   };
 
-  // 포지션 진입 감지를 위한 주기적 확인 (10초마다)
+
+
+  // 포지션이 있을 때만 5초마다 업데이트
   useEffect(() => {
-    if (isAutoTradingEnabled && sessionId) {
-      const profitInterval = setInterval(() => {
-        // 포지션 진입 여부 확인 후 수익률 정보 업데이트
-        fetchTradingInfo();
-      }, 10000);  // 10초마다 수익률 정보 확인
+    if (isAutoTradingEnabled && sessionId && tradingInfo.hasPosition) {
+      const positionInterval = setInterval(() => {
+        fetchTradingInfo();  // 포지션이 있을 때만 5초마다 수익률 정보 업데이트
+      }, 5000);
       
-      return () => clearInterval(profitInterval);
+      return () => clearInterval(positionInterval);
     }
-  }, [isAutoTradingEnabled, sessionId]);
+  }, [isAutoTradingEnabled, sessionId, tradingInfo.hasPosition]);
 
   // 거래소 타입에 따른 자산 단위
   const getAssetUnit = () => {
