@@ -89,6 +89,8 @@ async def create_or_update_session(request: Request) -> Dict[str, Any]:
             'is_auto_trading_enabled': data.get('isAutoTradingEnabled', False)
         }
         
+        logger.info(f"자동매매 상태 업데이트: session_id={session_id}, is_auto_trading_enabled={data.get('isAutoTradingEnabled', False)}")
+        
         if sqlite_session_service.save_session(session_data):
             logger.info(f"세션 정보를 SQLite에 저장: {session_id}")
         else:

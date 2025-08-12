@@ -15,13 +15,13 @@ export default function ProfitMonitor({ sessionId, isAutoTradingEnabled }) {
   });
 
   useEffect(() => {
-    if (isAutoTradingEnabled && sessionId) {
-      fetchBalanceInfo();  // 자동매매 시작 시 자산 정보만 조회
+    if (isAutoTradingEnabled) {
+      fetchBalanceInfo();  // 자동매매 시작 시 즉시 자산 정보 조회
       // 5초마다 자산 정보 업데이트
       const interval = setInterval(fetchBalanceInfo, 5000);
       return () => clearInterval(interval);
     }
-  }, [isAutoTradingEnabled, sessionId]);
+  }, [isAutoTradingEnabled]);
 
   const fetchBalanceInfo = async () => {
     try {
