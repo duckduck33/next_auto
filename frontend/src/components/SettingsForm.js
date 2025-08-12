@@ -6,8 +6,6 @@ import Input from './common/Input';
 import Button from './common/Button';
 import Dropdown from './common/Dropdown';
 
-const BACKEND_URL = 'http://localhost:8000';
-
 const DEFAULT_SETTINGS = {
   apiKey: '',
   secretKey: '',
@@ -57,7 +55,7 @@ export default function SettingsForm({ onSettingsChange, onAutoTradingChange }) 
 
   const checkServerStatus = async () => {
     try {
-      const response = await fetch(`${BACKEND_URL}/api/settings`);
+      const response = await fetch('/api/settings');
       if (response.ok) {
         setServerStatus('connected');
       } else {

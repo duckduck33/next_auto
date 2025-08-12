@@ -3,8 +3,6 @@
 import React from 'react';
 import Card from './common/Card';
 
-const BACKEND_URL = 'http://localhost:8000';
-
 export default function ProfitMonitor({ sessionId, isAutoTradingEnabled }) {
     return (
     <Card title="자동매매 상태">
@@ -27,7 +25,7 @@ export default function ProfitMonitor({ sessionId, isAutoTradingEnabled }) {
         <div className="p-3 bg-gray-800 rounded-lg">
           <p className="text-sm text-gray-400">웹훅 URL</p>
           <p className="text-xs text-gray-500 mt-1 break-all">
-            {BACKEND_URL}/api/webhook
+            /api/webhook
                   </p>
                 </div>
 

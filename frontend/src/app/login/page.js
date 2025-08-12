@@ -40,7 +40,7 @@ export default function LoginPage() {
       }
 
       // 백엔드 API로 로그인 요청
-      const response = await fetch('http://localhost:8000/api/login', {
+      const response = await fetch('/api/login', {
         method: 'POST',
         headers: {
           'Content-Type': 'application/json',
@@ -48,7 +48,8 @@ export default function LoginPage() {
         body: JSON.stringify({
           email: email.trim(),
           password: password
-        })
+        }),
+        credentials: 'include'
       });
 
       const data = await response.json();
@@ -87,7 +88,7 @@ export default function LoginPage() {
 
     try {
       // 백엔드 API로 회원가입 요청
-      const response = await fetch('http://localhost:8000/api/register', {
+      const response = await fetch('/api/register', {
         method: 'POST',
         headers: {
           'Content-Type': 'application/json',
@@ -95,7 +96,8 @@ export default function LoginPage() {
         body: JSON.stringify({
           email: email.trim(),
           password: password
-        })
+        }),
+        credentials: 'include'
       });
 
       const data = await response.json();
