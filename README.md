@@ -88,11 +88,7 @@ npm run dev
 ### 수익률 API
 - `GET /api/profit/{symbol}`: 수익률 정보 조회
 
-### 캘린더 API
-- `GET /api/calendar/{session_id}`: 세션별 캘린더 데이터
-- `POST /api/calendar/{session_id}`: 캘린더 데이터 저장
-- `GET /api/calendar/{session_id}/daily/{date}`: 일별 수익 요약
-- `GET /api/calendar/{session_id}/monthly/{year}/{month}`: 월별 캘린더
+
 
 ## 🔧 설정
 

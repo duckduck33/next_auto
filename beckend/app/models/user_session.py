@@ -18,12 +18,7 @@ class UserSession(BaseModel):
     last_activity: datetime
     current_symbol: Optional[str] = None
 
-class CalendarData(BaseModel):
-    session_id: str
-    date: str  # YYYY-MM-DD format
-    profit: float
-    profit_rate: float
-    created_at: datetime
+
 
 class SessionManager:
     def __init__(self):
