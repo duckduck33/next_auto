@@ -67,7 +67,7 @@ export default function Dashboard() {
           </div>
           
           <h1 className="text-4xl font-bold text-white mb-2">
-            Next Auto Trading
+            Next Auto Trading - 성공008
           </h1>
           <p className="text-gray-400 mb-4">
             TradingView 자동매매 시스템
