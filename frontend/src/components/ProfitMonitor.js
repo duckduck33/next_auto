@@ -42,56 +42,6 @@ export default function ProfitMonitor({ sessionId, isAutoTradingEnabled }) {
     }
   };
 
-  const fetchTradingInfo = async () => {
-    try {
-      // 세션 ID 생성 (사용자 이메일 + 거래소 타입)
-      const userEmail = localStorage.getItem('userEmail');
-      const exchangeType = localStorage.getItem('exchangeType') || 'demo';
-      const sessionId = `${userEmail}_${exchangeType}`;
-      
-      // 먼저 현재 거래 심볼 조회
-      const symbolResponse = await fetch(`/api/current-symbol/${sessionId}`, {
-        credentials: 'include'
-      });
-      
-      let symbol = 'XRP-USDT'; // 기본값
-      if (symbolResponse.ok) {
-        const symbolData = await symbolResponse.json();
-        symbol = symbolData.symbol;
-      }
-      
-      const response = await fetch(`/api/profit/${symbol}?session_id=${sessionId}`, {
-        credentials: 'include'
-      });
-      if (response.ok) {
-        const data = await response.json();
-        setTradingInfo(data);
-      }
-    } catch (error) {
-      console.error('거래 정보 조회 실패:', error);
-    }
-  };
-
-  // 포지션 진입 감지 시 수익률 정보 업데이트
-  const updateProfitInfo = () => {
-    if (isAutoTradingEnabled && sessionId) {
-      fetchTradingInfo();  // 포지션 진입 후 수익률 API 호출
-    }
-  };
-
-
-
-  // 포지션이 있을 때만 5초마다 업데이트
-  useEffect(() => {
-    if (isAutoTradingEnabled && sessionId && tradingInfo.hasPosition) {
-      const positionInterval = setInterval(() => {
-        fetchTradingInfo();  // 포지션이 있을 때만 5초마다 수익률 정보 업데이트
-      }, 5000);
-      
-      return () => clearInterval(positionInterval);
-    }
-  }, [isAutoTradingEnabled, sessionId, tradingInfo.hasPosition]);
-
   // 거래소 타입에 따른 자산 단위
   const getAssetUnit = () => {
     const exchangeType = localStorage.getItem('exchangeType') || 'demo';
