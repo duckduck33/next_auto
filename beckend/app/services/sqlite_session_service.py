@@ -173,5 +173,21 @@ class SQLiteSessionService:
             logger.error(f"활성 세션 조회 오류: {str(e)}")
             return []
 
+    def get_all_sessions(self) -> List[Dict[str, Any]]:
+        """모든 세션 조회 (웹훅용)"""
+        try:
+            with self.db.get_connection() as conn:
+                cursor = conn.cursor()
+                cursor.execute(
+                    "SELECT * FROM user_sessions ORDER BY created_at DESC"
+                )
+                rows = cursor.fetchall()
+                
+                return [dict(row) for row in rows]
+                
+        except Exception as e:
+            logger.error(f"모든 세션 조회 오류: {str(e)}")
+            return []
+
 # 전역 서비스 인스턴스
 sqlite_session_service = SQLiteSessionService()

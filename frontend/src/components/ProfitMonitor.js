@@ -16,12 +16,31 @@ export default function ProfitMonitor({ sessionId, isAutoTradingEnabled }) {
 
   useEffect(() => {
     if (isAutoTradingEnabled && sessionId) {
-      fetchTradingInfo();
-      // 5초마다 업데이트
-      const interval = setInterval(fetchTradingInfo, 5000);
+      fetchBalanceInfo();  // 자동매매 시작 시 자산 정보만 조회
+      // 5초마다 자산 정보 업데이트
+      const interval = setInterval(fetchBalanceInfo, 5000);
       return () => clearInterval(interval);
     }
   }, [isAutoTradingEnabled, sessionId]);
+
+  const fetchBalanceInfo = async () => {
+    try {
+      // 세션 ID 생성 (사용자 이메일 + 거래소 타입)
+      const userEmail = localStorage.getItem('userEmail');
+      const exchangeType = localStorage.getItem('exchangeType') || 'demo';
+      const sessionId = `${userEmail}_${exchangeType}`;
+      
+      const response = await fetch(`/api/balance/${sessionId}`, {
+        credentials: 'include'
+      });
+      if (response.ok) {
+        const data = await response.json();
+        setTradingInfo(data);
+      }
+    } catch (error) {
+      console.error('자산 정보 조회 실패:', error);
+    }
+  };
 
   const fetchTradingInfo = async () => {
     try {
@@ -52,6 +71,25 @@ export default function ProfitMonitor({ sessionId, isAutoTradingEnabled }) {
       console.error('거래 정보 조회 실패:', error);
     }
   };
+
+  // 포지션 진입 감지 시 수익률 정보 업데이트
+  const updateProfitInfo = () => {
+    if (isAutoTradingEnabled && sessionId) {
+      fetchTradingInfo();  // 포지션 진입 후 수익률 API 호출
+    }
+  };
+
+  // 포지션 진입 감지를 위한 주기적 확인 (10초마다)
+  useEffect(() => {
+    if (isAutoTradingEnabled && sessionId) {
+      const profitInterval = setInterval(() => {
+        // 포지션 진입 여부 확인 후 수익률 정보 업데이트
+        fetchTradingInfo();
+      }, 10000);  // 10초마다 수익률 정보 확인
+      
+      return () => clearInterval(profitInterval);
+    }
+  }, [isAutoTradingEnabled, sessionId]);
 
   // 거래소 타입에 따른 자산 단위
   const getAssetUnit = () => {

@@ -133,6 +133,11 @@ async def execute_trade_for_session(session_id: str, symbol: str, action: str, u
                 is_close=False
             )
             logger.info(f"✅ 세션 {session_id} 새 포지션 진입 결과: {result}")
+            
+            # 포지션 진입 성공 시 프론트엔드에 수익률 정보 업데이트 신호 전송
+            if result.get('success', False):
+                logger.info(f"📊 세션 {session_id} 포지션 진입 성공 - 수익률 정보 업데이트 필요")
+            
             return result
             
     except Exception as e:
@@ -172,21 +177,21 @@ async def handle_webhook(request: Request) -> dict[str, Any]:
         
         logger.info(f"🎯 웹훅 신호: 심볼={symbol}, 전략={strategy}, 액션={action}")
         
-        # 모든 활성 세션 조회
-        active_sessions = sqlite_session_service.get_active_sessions()
-        logger.info(f"📊 활성 세션 수: {len(active_sessions)}")
+        # 모든 세션 조회 (웹훅은 모든 세션에 대해 처리)
+        all_sessions = sqlite_session_service.get_all_sessions()
+        logger.info(f"📊 전체 세션 수: {len(all_sessions)}")
         
-        if not active_sessions:
-            logger.info("⚠️ 활성 세션이 없습니다.")
+        if not all_sessions:
+            logger.info("⚠️ 세션이 없습니다.")
             return {
                 "success": True,
-                "message": "활성 세션이 없습니다.",
+                "message": "세션이 없습니다.",
                 "data": None
             }
         
-        # 각 활성 세션에 대해 웹훅 신호 처리
+        # 각 세션에 대해 웹훅 신호 처리
         processed_sessions = []
-        for session in active_sessions:
+        for session in all_sessions:
             session_id = session['session_id']
             
             try:
@@ -206,6 +211,11 @@ async def handle_webhook(request: Request) -> dict[str, Any]:
                 # API 키가 설정되지 않은 경우 스킵
                 if not user_settings.get('apiKey') or not user_settings.get('secretKey'):
                     logger.info(f"⚠️ 세션 {session_id}: API 키가 설정되지 않음 - 스킵")
+                    continue
+                
+                # 자동매매가 비활성화된 경우 스킵
+                if not user_settings.get('isAutoTradingEnabled', False):
+                    logger.info(f"⚠️ 세션 {session_id}: 자동매매가 비활성화됨 - 스킵")
                     continue
                 
                 # 사용자가 선택한 지표와 웹훅 전략이 일치하는지 확인
