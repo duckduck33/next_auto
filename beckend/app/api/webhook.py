@@ -9,8 +9,7 @@ from app.services.trading import TradingService
 
 from app.services.sqlite_session_service import sqlite_session_service
 
-# 하드코딩된 심볼을 상수로 통합관리
-HARDCODED_SYMBOL = "XRP-USDT"
+
 
 # 로깅 설정
 logging.basicConfig(level=logging.INFO)
@@ -36,11 +35,22 @@ async def calculate_order_quantity(investment_amount: float, leverage: int, curr
 async def execute_trade_for_session(session_id: str, symbol: str, action: str, user_settings: dict) -> dict:
     """세션별 매매 실행"""
     try:
+        # 세션별 BingXClient 인스턴스 생성
+        session_bingx_client = BingXClient()
+        session_bingx_client.set_credentials(
+            api_key=user_settings['apiKey'],
+            secret_key=user_settings['secretKey'],
+            exchange_type=user_settings.get('exchangeType', 'demo')
+        )
+        
+        # 세션별 TradingService 인스턴스 생성
+        session_trading_service = TradingService()
+        
         if action == 'CLOSE':
             logger.info(f"🔴 세션 {session_id} 포지션 종료 시도")
             
             # 먼저 포지션 존재 여부 확인
-            positions = await bingx_client.get_positions(symbol)
+            positions = await session_bingx_client.get_positions(symbol)
             active_positions = [p for p in positions['data'] if float(p.get('positionAmt', 0)) != 0]
             
             if not active_positions:
@@ -51,7 +61,7 @@ async def execute_trade_for_session(session_id: str, symbol: str, action: str, u
                 }
             
             # 포지션이 있는 경우에만 종료 시도
-            result = await trading_service.execute_trade(
+            result = await session_trading_service.execute_trade(
                 symbol=symbol,
                 is_close=True
             )
@@ -60,12 +70,12 @@ async def execute_trade_for_session(session_id: str, symbol: str, action: str, u
             
         else:
             # 현재가 조회
-            price_info = await bingx_client.get_ticker(symbol)
+            price_info = await session_bingx_client.get_ticker(symbol)
             current_price = float(price_info['data']['price'])
             logger.info(f"💰 세션 {session_id} 현재가 조회: {current_price}")
             
             # 기존 포지션 확인
-            positions = await bingx_client.get_positions(symbol)
+            positions = await session_bingx_client.get_positions(symbol)
             active_positions = [p for p in positions['data'] if float(p.get('positionAmt', 0)) != 0]
             
             # 반대 포지션이 있는지 확인
@@ -84,7 +94,7 @@ async def execute_trade_for_session(session_id: str, symbol: str, action: str, u
                 leverage = int(user_settings.get('leverage', 5))
                 
                 # 기존 포지션 종료
-                close_result = await trading_service.execute_trade(
+                close_result = await session_trading_service.execute_trade(
                     symbol=symbol,
                     side='CLOSE',
                     quantity=0,
@@ -113,7 +123,7 @@ async def execute_trade_for_session(session_id: str, symbol: str, action: str, u
             
             # 새 포지션 진입
             logger.info(f"🚀 세션 {session_id} 새 포지션 진입 시도: {action} {symbol}")
-            result = await trading_service.execute_trade(
+            result = await session_trading_service.execute_trade(
                 symbol=symbol,
                 side=action,
                 quantity=quantity,
@@ -210,12 +220,7 @@ async def handle_webhook(request: Request) -> dict[str, Any]:
                 # SQLite에 현재 거래 심볼 업데이트
                 sqlite_session_service.update_session_status(session_id, True, symbol)
                 
-                # BingX 클라이언트에 API 키 설정 (거래소 타입 포함)
-                bingx_client.set_credentials(
-                    api_key=user_settings['apiKey'],
-                    secret_key=user_settings['secretKey'],
-                    exchange_type=user_settings.get('exchangeType', 'demo')
-                )
+
                 
                 # 매매 실행
                 result = await execute_trade_for_session(session_id, symbol, action, user_settings)
@@ -259,33 +264,40 @@ async def get_current_symbol(session_id: str) -> dict[str, str]:
     symbol = db_session.get('current_symbol', "XRP-USDT") if db_session else "XRP-USDT"
     return {"symbol": symbol}
 
-@router.get("/check-position")
-async def check_position() -> dict[str, Any]:
-    """현재 활성 포지션 확인"""
-    global user_settings
-    
+@router.get("/check-position/{session_id}")
+async def check_position(session_id: str) -> dict[str, Any]:
+    """세션별 현재 활성 포지션 확인"""
     try:
+        # 세션 정보 조회
+        db_session = sqlite_session_service.get_session(session_id)
+        if not db_session:
+            return {
+                "success": False,
+                "hasPosition": False,
+                "message": "세션을 찾을 수 없습니다."
+            }
+        
         # API 키가 설정되지 않은 경우 오류 반환
-        if not user_settings.get('apiKey') or not user_settings.get('secretKey'):
+        if not db_session.get('api_key') or not db_session.get('secret_key'):
             return {
                 "success": False,
                 "hasPosition": False,
                 "message": "API 키가 설정되지 않았습니다."
             }
         
-        # 하드코딩된 심볼 사용
-        symbol = HARDCODED_SYMBOL
+        # 세션의 현재 거래 심볼 사용
+        symbol = db_session.get('current_symbol', 'XRP-USDT')
         
-        # BingX 클라이언트에 API 키 설정
-        bingx_client.set_credentials(
-            api_key=user_settings['apiKey'],
-            secret_key=user_settings['secretKey']
+        # 세션별 BingXClient 인스턴스 생성
+        session_bingx_client = BingXClient()
+        session_bingx_client.set_credentials(
+            api_key=db_session['api_key'],
+            secret_key=db_session['secret_key'],
+            exchange_type=db_session.get('exchange_type', 'demo')
         )
         
-
-        
-        # 포지션 조회 (BingX 클라이언트 사용)
-        positions_result = await bingx_client.get_positions(symbol)
+        # 포지션 조회 (세션별 BingX 클라이언트 사용)
+        positions_result = await session_bingx_client.get_positions(symbol)
         
         if positions_result.get('code') != 0:
             return {

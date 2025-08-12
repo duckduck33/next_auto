@@ -30,7 +30,18 @@ export default function ProfitMonitor({ sessionId, isAutoTradingEnabled }) {
       const exchangeType = localStorage.getItem('exchangeType') || 'demo';
       const sessionId = `${userEmail}_${exchangeType}`;
       
-      const response = await fetch(`/api/profit/XRP-USDT?session_id=${sessionId}`, {
+      // 먼저 현재 거래 심볼 조회
+      const symbolResponse = await fetch(`/api/current-symbol/${sessionId}`, {
+        credentials: 'include'
+      });
+      
+      let symbol = 'XRP-USDT'; // 기본값
+      if (symbolResponse.ok) {
+        const symbolData = await symbolResponse.json();
+        symbol = symbolData.symbol;
+      }
+      
+      const response = await fetch(`/api/profit/${symbol}?session_id=${sessionId}`, {
         credentials: 'include'
       });
       if (response.ok) {

@@ -16,8 +16,7 @@ load_dotenv()
 
 router = APIRouter()
 
-# 하드코딩된 심볼을 상수로 통합관리
-HARDCODED_SYMBOL = "XRP-USDT"
+
 
 def get_api_url(exchange_type: str) -> str:
     """거래소 타입에 따라 API URL 반환"""
