@@ -40,20 +40,6 @@ export default function ProfitMonitor({ sessionId, isAutoTradingEnabled }) {
   return (
     <Card title="자동매매 상태">
       <div className="space-y-4">
-        {/* 서버 상태 표시 */}
-        <div className={`p-3 rounded-lg text-sm ${
-          sessionId ? 'bg-green-900 text-green-200' : 'bg-gray-700 text-gray-300'
-        }`}>
-          {sessionId ? '✅ 세션 연결됨' : '⏳ 세션 대기 중'}
-        </div>
-        
-        {/* 자동매매 상태 */}
-        <div className={`p-3 rounded-lg text-sm ${
-          isAutoTradingEnabled ? 'bg-blue-900 text-blue-200' : 'bg-gray-700 text-gray-300'
-        }`}>
-          {isAutoTradingEnabled ? '🟢 자동매매 활성화' : '🔴 자동매매 비활성화'}
-        </div>
-
         {/* 거래 정보 */}
         {isAutoTradingEnabled && (
           <div className="space-y-3">
