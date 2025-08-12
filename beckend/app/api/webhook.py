@@ -33,6 +33,105 @@ async def calculate_order_quantity(investment_amount: float, leverage: int, curr
     """투자금액과 레버리지를 기반으로 주문 수량 계산"""
     return (investment_amount * leverage) / current_price
 
+async def execute_trade_for_session(session_id: str, symbol: str, action: str, user_settings: dict) -> dict:
+    """세션별 매매 실행"""
+    try:
+        if action == 'CLOSE':
+            logger.info(f"🔴 세션 {session_id} 포지션 종료 시도")
+            
+            # 먼저 포지션 존재 여부 확인
+            positions = await bingx_client.get_positions(symbol)
+            active_positions = [p for p in positions['data'] if float(p.get('positionAmt', 0)) != 0]
+            
+            if not active_positions:
+                logger.info(f"⚠️ 세션 {session_id}: 현재 활성화된 포지션이 없습니다.")
+                return {
+                    "success": True,
+                    "message": "현재 활성화된 포지션이 없습니다."
+                }
+            
+            # 포지션이 있는 경우에만 종료 시도
+            result = await trading_service.execute_trade(
+                symbol=symbol,
+                is_close=True
+            )
+            logger.info(f"🔴 세션 {session_id} 포지션 종료 결과: {result}")
+            return result
+            
+        else:
+            # 현재가 조회
+            price_info = await bingx_client.get_ticker(symbol)
+            current_price = float(price_info['data']['price'])
+            logger.info(f"💰 세션 {session_id} 현재가 조회: {current_price}")
+            
+            # 기존 포지션 확인
+            positions = await bingx_client.get_positions(symbol)
+            active_positions = [p for p in positions['data'] if float(p.get('positionAmt', 0)) != 0]
+            
+            # 반대 포지션이 있는지 확인
+            opposite_position = None
+            for position in active_positions:
+                position_side = position.get('positionSide')
+                if (action == 'LONG' and position_side == 'SHORT') or (action == 'SHORT' and position_side == 'LONG'):
+                    opposite_position = position
+                    break
+            
+            # 반대 포지션이 있으면 먼저 종료
+            if opposite_position:
+                logger.info(f"🔄 세션 {session_id} 반대 포지션 발견: {opposite_position['positionSide']} -> {action} 신호로 인한 포지션 전환")
+                
+                # 사용자 설정값 사용 (반대 포지션 종료용)
+                leverage = int(user_settings.get('leverage', 5))
+                
+                # 기존 포지션 종료
+                close_result = await trading_service.execute_trade(
+                    symbol=symbol,
+                    side='CLOSE',
+                    quantity=0,
+                    leverage=leverage,
+                    take_profit_percentage=0,
+                    stop_loss_percentage=0,
+                    is_close=True
+                )
+                logger.info(f"🔄 세션 {session_id} 기존 포지션 종료 결과: {close_result}")
+                
+                # 잠시 대기 (주문 처리 시간)
+                import asyncio
+                await asyncio.sleep(1)
+            
+            # 사용자 설정값 사용
+            investment_amount = float(user_settings.get('investment', 100))
+            leverage = int(user_settings.get('leverage', 5))
+            
+            # 주문 수량 계산
+            quantity = await calculate_order_quantity(
+                investment_amount=investment_amount,
+                leverage=leverage,
+                current_price=current_price
+            )
+            logger.info(f"📊 세션 {session_id} 계산된 주문 수량: {quantity}")
+            
+            # 새 포지션 진입
+            logger.info(f"🚀 세션 {session_id} 새 포지션 진입 시도: {action} {symbol}")
+            result = await trading_service.execute_trade(
+                symbol=symbol,
+                side=action,
+                quantity=quantity,
+                leverage=leverage,
+                take_profit_percentage=float(user_settings.get('takeProfit', 1.0)),
+                stop_loss_percentage=float(user_settings.get('stopLoss', 0.5)),
+                is_close=False
+            )
+            logger.info(f"✅ 세션 {session_id} 새 포지션 진입 결과: {result}")
+            return result
+            
+    except Exception as e:
+        logger.error(f"❌ 세션 {session_id} 매매 실행 중 오류: {str(e)}")
+        return {
+            "success": False,
+            "message": f"매매 실행 중 오류: {str(e)}"
+        }
+
 @router.post("/webhook")
 async def handle_webhook(request: Request) -> dict[str, Any]:
     """트레이딩뷰 웹훅을 처리하는 엔드포인트"""
@@ -45,57 +144,6 @@ async def handle_webhook(request: Request) -> dict[str, Any]:
         body = await request.body()
         data = json.loads(body.decode('utf-8'))
         logger.info(f"📥 웹훅 신호 수신: {data}")
-        
-        # 세션 ID 추출 (웹훅에서 session_id를 포함하도록 수정 필요)
-        session_id = data.get('session_id')
-        if not session_id:
-            logger.error("❌ 세션 ID가 없습니다.")
-            return {
-                "success": False,
-                "message": "세션 ID가 필요합니다.",
-                "data": None
-            }
-        
-        # SQLite에서 세션 설정 가져오기
-        db_session = sqlite_session_service.get_session(session_id)
-        if not db_session:
-            logger.error(f"❌ 세션 {session_id}를 찾을 수 없습니다.")
-            return {
-                "success": False,
-                "message": "세션을 찾을 수 없습니다.",
-                "data": None
-            }
-        
-        user_settings = {
-            'apiKey': db_session['api_key'],
-            'secretKey': db_session['secret_key'],
-            'exchangeType': db_session['exchange_type'],
-            'investment': db_session['investment'],
-            'leverage': db_session['leverage'],
-            'takeProfit': db_session['take_profit'],
-            'stopLoss': db_session['stop_loss'],
-            'indicator': db_session['indicator'],
-            'isAutoTradingEnabled': db_session['is_auto_trading_enabled']
-        }
-        current_trading_symbol = db_session.get('current_symbol')
-        
-        # 자동매매가 비활성화된 경우 웹훅 무시
-        if not user_settings.get('isAutoTradingEnabled', False):
-            logger.info(f"❌ 세션 {session_id}의 자동매매가 비활성화되어 있어 웹훅을 무시합니다.")
-            return {
-                "success": True,
-                "message": "자동매매가 비활성화되어 있습니다.",
-                "data": None
-            }
-        
-        # API 키가 설정되지 않은 경우 웹훅 무시
-        if not user_settings.get('apiKey') or not user_settings.get('secretKey'):
-            logger.info(f"❌ 세션 {session_id}의 API 키가 설정되지 않아 웹훅을 무시합니다.")
-            return {
-                "success": True,
-                "message": "API 키가 설정되지 않았습니다.",
-                "data": None
-            }
         
         # 액션 검증
         action = data.get('action')
@@ -112,152 +160,97 @@ async def handle_webhook(request: Request) -> dict[str, Any]:
             # XRPUSDT.P -> XRP-USDT 변환
             symbol = symbol.replace('.P', '').replace('USDT', '-USDT')
         
-        # SQLite에 현재 거래 심볼 업데이트
-        sqlite_session_service.update_session_status(session_id, True, symbol)
-        logger.info(f"🎯 세션 {session_id} 거래 심볼: {symbol}, 전략: {strategy}, 액션: {action}")
+        logger.info(f"🎯 웹훅 신호: 심볼={symbol}, 전략={strategy}, 액션={action}")
         
-        # 사용자가 선택한 지표와 웹훅 전략이 일치하는지 확인
-        selected_indicator = user_settings.get('indicator', 'PREMIUM')
+        # 모든 활성 세션 조회
+        active_sessions = sqlite_session_service.get_active_sessions()
+        logger.info(f"📊 활성 세션 수: {len(active_sessions)}")
         
-        if strategy != selected_indicator:
-            logger.info(f"⚠️ 세션 {session_id} 지표 불일치: 웹훅 전략({strategy}) != 선택된 지표({selected_indicator}) - 매매 무시")
+        if not active_sessions:
+            logger.info("⚠️ 활성 세션이 없습니다.")
             return {
                 "success": True,
-                "message": f"지표 불일치로 매매 무시: {strategy} != {selected_indicator}",
+                "message": "활성 세션이 없습니다.",
                 "data": None
             }
         
-        logger.info(f"✅ 세션 {session_id} 지표 일치: {strategy} == {selected_indicator} - 매매 실행")
-        
-        # BingX 클라이언트에 API 키 설정 (거래소 타입 포함)
-        bingx_client.set_credentials(
-            api_key=user_settings['apiKey'],
-            secret_key=user_settings['secretKey'],
-            exchange_type=user_settings.get('exchangeType', 'demo')
-        )
-        
-
-        
-        if action == 'CLOSE':
-            logger.info("🔴 포지션 종료 시도")
+        # 각 활성 세션에 대해 웹훅 신호 처리
+        processed_sessions = []
+        for session in active_sessions:
+            session_id = session['session_id']
             
-            # 먼저 포지션 존재 여부 확인
-            positions = await bingx_client.get_positions(symbol)
-            active_positions = [p for p in positions['data'] if float(p.get('positionAmt', 0)) != 0]
-            
-            if not active_positions:
-                logger.info("⚠️ 현재 활성화된 포지션이 없습니다.")
-                return {
-                    "success": True,
-                    "message": "현재 활성화된 포지션이 없습니다.",
-                    "data": None
+            try:
+                # 세션별 설정
+                user_settings = {
+                    'apiKey': session['api_key'],
+                    'secretKey': session['secret_key'],
+                    'exchangeType': session['exchange_type'],
+                    'investment': session['investment'],
+                    'leverage': session['leverage'],
+                    'takeProfit': session['take_profit'],
+                    'stopLoss': session['stop_loss'],
+                    'indicator': session['indicator'],
+                    'isAutoTradingEnabled': session['is_auto_trading_enabled']
                 }
-            
-            # 포지션이 있는 경우에만 종료 시도
-            result = await trading_service.execute_trade(
-                symbol=symbol,
-                is_close=True
-            )
-            logger.info(f"🔴 포지션 종료 결과: {result}")
-        else:
-            # 현재가 조회
-            price_info = await bingx_client.get_ticker(symbol)
-            current_price = float(price_info['data']['price'])
-            logger.info(f"💰 현재가 조회: {current_price}")
-            
-            # 기존 포지션 확인
-            positions = await bingx_client.get_positions(symbol)
-            active_positions = [p for p in positions['data'] if float(p.get('positionAmt', 0)) != 0]
-            
-            # 반대 포지션이 있는지 확인
-            opposite_position = None
-            for position in active_positions:
-                position_side = position.get('positionSide')
-                if (action == 'LONG' and position_side == 'SHORT') or (action == 'SHORT' and position_side == 'LONG'):
-                    opposite_position = position
-                    break
-            
-            # 반대 포지션이 있으면 먼저 종료
-            if opposite_position:
-                logger.info(f"🔄 반대 포지션 발견: {opposite_position['positionSide']} -> {action} 신호로 인한 포지션 전환")
                 
-                # 사용자 설정값 사용 (반대 포지션 종료용)
-                leverage = int(user_settings.get('leverage', 5))
+                # API 키가 설정되지 않은 경우 스킵
+                if not user_settings.get('apiKey') or not user_settings.get('secretKey'):
+                    logger.info(f"⚠️ 세션 {session_id}: API 키가 설정되지 않음 - 스킵")
+                    continue
                 
-                # 기존 포지션 종료
-                close_result = await trading_service.execute_trade(
-                    symbol=symbol,
-                    side='CLOSE',
-                    quantity=0,
-                    leverage=leverage,
-                    take_profit_percentage=0,
-                    stop_loss_percentage=0,
-                    is_close=True
+                # 사용자가 선택한 지표와 웹훅 전략이 일치하는지 확인
+                selected_indicator = user_settings.get('indicator', 'PREMIUM')
+                
+                if strategy != selected_indicator:
+                    logger.info(f"⚠️ 세션 {session_id} 지표 불일치: 웹훅 전략({strategy}) != 선택된 지표({selected_indicator}) - 스킵")
+                    continue
+                
+                logger.info(f"✅ 세션 {session_id} 지표 일치: {strategy} == {selected_indicator} - 매매 실행")
+                
+                # SQLite에 현재 거래 심볼 업데이트
+                sqlite_session_service.update_session_status(session_id, True, symbol)
+                
+                # BingX 클라이언트에 API 키 설정 (거래소 타입 포함)
+                bingx_client.set_credentials(
+                    api_key=user_settings['apiKey'],
+                    secret_key=user_settings['secretKey'],
+                    exchange_type=user_settings.get('exchangeType', 'demo')
                 )
-                logger.info(f"🔄 기존 포지션 종료 결과: {close_result}")
                 
-                # 잠시 대기 (주문 처리 시간)
-                import asyncio
-                await asyncio.sleep(1)
-            
-            # 사용자 설정값 사용
-            investment_amount = float(user_settings.get('investment', 100))
-            leverage = int(user_settings.get('leverage', 5))
-            
-            # 주문 수량 계산
-            quantity = await calculate_order_quantity(
-                investment_amount=investment_amount,
-                leverage=leverage,
-                current_price=current_price
-            )
-            logger.info(f"📊 계산된 주문 수량: {quantity}")
-            
-            # 새 포지션 진입
-            logger.info(f"🚀 새 포지션 진입 시도: {action} {symbol}")
-            result = await trading_service.execute_trade(
-                symbol=symbol,
-                side=action,
-                quantity=quantity,
-                leverage=leverage,
-                take_profit_percentage=float(user_settings.get('takeProfit', 1.0)),
-                stop_loss_percentage=float(user_settings.get('stopLoss', 0.5)),
-                is_close=False
-            )
-            logger.info(f"✅ 새 포지션 진입 결과: {result}")
+                # 매매 실행
+                result = await execute_trade_for_session(session_id, symbol, action, user_settings)
+                processed_sessions.append({
+                    'session_id': session_id,
+                    'result': result
+                })
+                
+            except Exception as e:
+                logger.error(f"❌ 세션 {session_id} 처리 중 오류: {str(e)}")
+                processed_sessions.append({
+                    'session_id': session_id,
+                    'result': {'success': False, 'error': str(e)}
+                })
         
-        # 포지션 진입 성공 시 SQLite에 거래 심볼 업데이트
-        if result.get('success', False):
-            sqlite_session_service.update_session_status(session_id, True, symbol)
-            logger.info(f"🎯 세션 {session_id} 현재 거래 심볼 업데이트: {symbol}")
+        logger.info(f"📈 웹훅 처리 완료: {len(processed_sessions)}개 세션 처리됨")
         
-        logger.info("=== 웹훅 신호 처리 완료 ===")
         return {
             "success": True,
-            "message": "Order executed successfully",
-            "data": result
+            "message": f"웹훅 신호가 {len(processed_sessions)}개 세션에서 처리되었습니다.",
+            "data": {
+                "symbol": symbol,
+                "strategy": strategy,
+                "action": action,
+                "processed_sessions": processed_sessions
+            }
         }
         
-    except json.JSONDecodeError as e:
-        logger.error(f"JSON 파싱 오류: {str(e)}")
-        logger.error(f"수신된 데이터: {body.decode('utf-8')}")
-        raise HTTPException(
-            status_code=400,
-            detail="JSON 형식이 아닌 데이터가 수신되었습니다"
-        )
-        
-    except ValueError as e:
-        logger.error(f"값 오류: {str(e)}")
-        raise HTTPException(
-            status_code=400,
-            detail=str(e)
-        )
-        
     except Exception as e:
-        logger.error(f"예상치 못한 오류: {str(e)}", exc_info=True)
-        raise HTTPException(
-            status_code=400,
-            detail=f"웹훅 처리 중 오류 발생: {str(e)}"
-        )
+        logger.error(f"웹훅 처리 중 오류: {str(e)}")
+        return {
+            "success": False,
+            "message": f"웹훅 처리 중 오류 발생: {str(e)}",
+            "data": None
+        }
 
 @router.get("/current-symbol/{session_id}")
 async def get_current_symbol(session_id: str) -> dict[str, str]:
