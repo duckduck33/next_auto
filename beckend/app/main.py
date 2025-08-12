@@ -37,10 +37,10 @@ app.include_router(test_trading.router, prefix=settings.api_prefix, tags=["test"
 @app.on_event("startup")
 async def startup_event():
     # SQLite 데이터베이스는 자동으로 초기화됩니다
-    print("성공006: Next Auto Trading System 시작됨")
-    print("성공006: FastAPI 서버가 정상적으로 시작되었습니다.")
-    print("성공006: 포트 8000에서 서비스 중...")
-    print("성공006: 수익률 API 라우터 완전 제거 완료")
+    print("성공007: Next Auto Trading System 시작됨")
+    print("성공007: FastAPI 서버가 정상적으로 시작되었습니다.")
+    print("성공007: 포트 8000에서 서비스 중...")
+    print("성공007: 계좌 잔고 조회 API 추가 완료")
 
 @app.on_event("shutdown")
 async def shutdown_event():
